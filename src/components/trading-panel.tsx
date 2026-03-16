@@ -1,6 +1,6 @@
 "use client";
 
-import { useOrderbook, usePositions, useOpenOrders, useAccountInfo } from "@/hooks/use-pacifica";
+import { useOrderbook, usePositions, useOpenOrders } from "@/hooks/use-pacifica";
 import { usePrivy } from "@privy-io/react-auth";
 import {
   Table,
@@ -143,19 +143,11 @@ export function TradingPanel({
   );
   const account = solanaWallet && "address" in solanaWallet ? (solanaWallet.address as string) : undefined;
 
-  const { data: accountInfo } = useAccountInfo(account);
-
   return (
     <div className="flex h-full flex-col">
       {/* Symbol header */}
       <div className="flex items-center justify-between border-b p-3">
         <TickerSelector value={symbol} onChange={onChangeSymbol} />
-        {authenticated && accountInfo && (
-          <div className="flex gap-4 text-xs text-muted-foreground">
-            <span>Equity: ${formatNum(accountInfo.account_equity)}</span>
-            <span>Available: ${formatNum(accountInfo.available_to_spend)}</span>
-          </div>
-        )}
       </div>
 
       {/* Chart */}
@@ -163,7 +155,7 @@ export function TradingPanel({
         <Chart symbol={symbol} />
       </div>
 
-      {/* Bottom section: orderbook + account */}
+      {/* Bottom section: orderbook + positions */}
       <div className="flex flex-1 overflow-hidden">
         {/* Orderbook */}
         <div className="w-1/2 overflow-auto border-r">
@@ -186,7 +178,7 @@ export function TradingPanel({
             </>
           ) : (
             <div className="flex h-full items-center justify-center text-xs text-muted-foreground">
-              Connect wallet to view positions & orders
+              Connect wallet
             </div>
           )}
         </div>
