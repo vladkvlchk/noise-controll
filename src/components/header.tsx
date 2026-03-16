@@ -2,11 +2,7 @@
 
 import { useState } from "react";
 import { usePrivy } from "@privy-io/react-auth";
-import {
-  useWallets,
-  useSignTransaction,
-  useSignMessage,
-} from "@privy-io/react-auth/solana";
+import { useWallets } from "@privy-io/react-auth/solana";
 import { Connection, PublicKey } from "@solana/web3.js";
 import { useAccountInfo } from "@/hooks/use-pacifica";
 import { buildDepositTransaction } from "@/lib/pacifica-deposit";
@@ -38,8 +34,6 @@ function formatNum(value: string, decimals = 2) {
 function WalletMenu() {
   const { login, logout, authenticated, user } = usePrivy();
   const { wallets } = useWallets();
-  const { signTransaction } = useSignTransaction();
-  const { signMessage } = useSignMessage();
 
   const solanaWallet = user?.linkedAccounts?.find(
     (a) => a.type === "wallet" && a.chainType === "solana"
@@ -80,9 +74,8 @@ function WalletMenu() {
       const depositor = new PublicKey(address);
       const tx = await buildDepositTransaction(depositor, amount, connection);
       const txBytes = tx.serialize({ requireAllSignatures: false });
-      const { signedTransaction } = await signTransaction({
+      const { signedTransaction } = await connectedWallet.signTransaction({
         transaction: txBytes,
-        wallet: connectedWallet,
       });
       const sig = await connection.sendRawTransaction(signedTransaction);
       await connection.confirmTransaction(sig, "confirmed");
@@ -110,11 +103,8 @@ function WalletMenu() {
       const header = { timestamp, expiry_window: expiryWindow, type: "withdraw" };
       const payload = { amount: String(amount) };
       const signature = await buildSignedMessage(header, payload, async (msg) => {
-        const { signature: sig } = await signMessage({
-          message: msg,
-          wallet: connectedWallet,
-        });
-        return sig;
+        const result = await connectedWallet.signMessage({ message: msg });
+        return result.signature;
       });
       const body = buildWithdrawRequest(address, signature, timestamp, expiryWindow, String(amount));
       const res = await fetch(WITHDRAW_URL, {

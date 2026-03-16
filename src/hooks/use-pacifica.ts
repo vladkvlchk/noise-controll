@@ -69,6 +69,15 @@ const INTERVAL_MS: Record<CandleInterval, number> = {
   "1d": 86_400_000,
 };
 
+export function useAccountSettings(account: string | undefined) {
+  return useQuery({
+    queryKey: ["pacifica", "settings", account],
+    queryFn: () => pacifica.getAccountSettings(account!),
+    enabled: !!account,
+    staleTime: 30_000,
+  });
+}
+
 export function useCandles(symbol: string, interval: CandleInterval) {
   const candleCount = 200;
   const now = Date.now();

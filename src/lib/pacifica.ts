@@ -94,6 +94,22 @@ interface ApiResponse<T> {
   code: number | null;
 }
 
+async function post<T>(path: string, body: Record<string, unknown>): Promise<T> {
+  const res = await fetch(`${BASE_URL}${path}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  const json = await res.json();
+  if (!res.ok) {
+    const msg = json.error ?? json.message ?? JSON.stringify(json);
+    throw new Error(msg);
+  }
+  // Some endpoints wrap data, some don't
+  if (json.data !== undefined) return json.data as T;
+  return json as T;
+}
+
 async function get<T>(path: string, params?: Record<string, string>): Promise<T> {
   const url = new URL(`${BASE_URL}${path}`);
   if (params) {
@@ -103,6 +119,20 @@ async function get<T>(path: string, params?: Record<string, string>): Promise<T>
   const json: ApiResponse<T> = await res.json();
   if (!json.success) throw new Error(json.error ?? "API error");
   return json.data;
+}
+
+export interface MarginSetting {
+  symbol: string;
+  isolated: boolean;
+  leverage: number;
+  created_at: number;
+  updated_at: number;
+}
+
+export interface AccountSettings {
+  auto_lend_disabled: boolean | null;
+  margin_settings: MarginSetting[];
+  spot_settings: unknown[];
 }
 
 export type CandleInterval = "1m" | "3m" | "5m" | "15m" | "30m" | "1h" | "2h" | "4h" | "8h" | "12h" | "1d";
@@ -141,4 +171,16 @@ export const pacifica = {
       start_time: String(startTime),
       ...(endTime ? { end_time: String(endTime) } : {}),
     }),
+  createMarketOrder: (body: Record<string, unknown>) =>
+    post<{ order_id: number }>("/orders/create_market", body),
+  createLimitOrder: (body: Record<string, unknown>) =>
+    post<{ order_id: number }>("/orders/create", body),
+  getAccountSettings: (account: string) =>
+    get<AccountSettings>("/account/settings", { account }),
+  updateLeverage: (body: Record<string, unknown>) =>
+    post<{ success: boolean }>("/account/leverage", body),
+  cancelOrder: (body: Record<string, unknown>) =>
+    post<{ success: boolean }>("/orders/cancel", body),
+  cancelAllOrders: (body: Record<string, unknown>) =>
+    post<{ success: boolean }>("/orders/cancel_all", body),
 };

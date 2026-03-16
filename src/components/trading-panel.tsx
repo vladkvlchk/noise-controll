@@ -1,7 +1,11 @@
 "use client";
 
+import { useState } from "react";
 import { useOrderbook, usePositions, useOpenOrders } from "@/hooks/use-pacifica";
 import { usePrivy } from "@privy-io/react-auth";
+import { useWallets } from "@privy-io/react-auth/solana";
+import { pacifica } from "@/lib/pacifica";
+import { signMessage as buildSignedMessage } from "@/lib/pacifica-sign";
 import {
   Table,
   TableBody,
@@ -14,6 +18,7 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { TickerSelector } from "@/components/ticker-selector";
 import { Chart } from "@/components/chart";
+import { OrderForm } from "@/components/order-form";
 
 function formatNum(value: string, decimals = 2) {
   const num = parseFloat(value);
@@ -96,37 +101,118 @@ function PositionsView({ account }: { account: string }) {
 
 function OrdersView({ account }: { account: string }) {
   const { data: orders, isLoading } = useOpenOrders(account);
+  const { wallets } = useWallets();
+  const connectedWallet = wallets.find((w) => w.address === account);
+  const [cancelling, setCancelling] = useState<number | "all" | null>(null);
+
+  async function handleCancel(orderId: number, symbol: string) {
+    if (!connectedWallet) return;
+    setCancelling(orderId);
+    try {
+      const timestamp = Date.now();
+      const expiryWindow = 30_000;
+      const payload = { symbol, order_id: orderId };
+      const signature = await buildSignedMessage(
+        { timestamp, expiry_window: expiryWindow, type: "cancel_order" },
+        payload,
+        async (msg) => {
+          const result = await connectedWallet.signMessage({ message: msg });
+          return result.signature;
+        },
+      );
+      await pacifica.cancelOrder({
+        account,
+        signature,
+        timestamp,
+        expiry_window: expiryWindow,
+        ...payload,
+      });
+    } catch (e) {
+      console.error("Cancel error:", e);
+    } finally {
+      setCancelling(null);
+    }
+  }
+
+  async function handleCancelAll() {
+    if (!connectedWallet) return;
+    setCancelling("all");
+    try {
+      const timestamp = Date.now();
+      const expiryWindow = 30_000;
+      const payload = {};
+      const signature = await buildSignedMessage(
+        { timestamp, expiry_window: expiryWindow, type: "cancel_all_orders" },
+        payload,
+        async (msg) => {
+          const result = await connectedWallet.signMessage({ message: msg });
+          return result.signature;
+        },
+      );
+      await pacifica.cancelAllOrders({
+        account,
+        signature,
+        timestamp,
+        expiry_window: expiryWindow,
+      });
+    } catch (e) {
+      console.error("Cancel all error:", e);
+    } finally {
+      setCancelling(null);
+    }
+  }
 
   if (isLoading) return <div className="p-3 text-xs text-muted-foreground">Loading...</div>;
   if (!orders?.length) return <div className="p-3 text-xs text-muted-foreground">No open orders</div>;
 
   return (
-    <Table>
-      <TableHeader>
-        <TableRow>
-          <TableHead className="text-xs">Symbol</TableHead>
-          <TableHead className="text-xs">Side</TableHead>
-          <TableHead className="text-xs">Type</TableHead>
-          <TableHead className="text-right text-xs">Price</TableHead>
-          <TableHead className="text-right text-xs">Size</TableHead>
-        </TableRow>
-      </TableHeader>
-      <TableBody>
-        {orders.map((order) => (
-          <TableRow key={order.order_id} className="text-xs">
-            <TableCell className="font-medium">{order.symbol}</TableCell>
-            <TableCell>
-              <Badge variant={order.side === "bid" ? "default" : "destructive"} className="text-[10px]">
-                {order.side === "bid" ? "BUY" : "SELL"}
-              </Badge>
-            </TableCell>
-            <TableCell className="text-muted-foreground">{order.order_type}</TableCell>
-            <TableCell className="text-right font-mono">{formatNum(order.price)}</TableCell>
-            <TableCell className="text-right font-mono">{formatNum(order.initial_amount)}</TableCell>
+    <div>
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead className="text-xs">Symbol</TableHead>
+            <TableHead className="text-xs">Side</TableHead>
+            <TableHead className="text-right text-xs">Price</TableHead>
+            <TableHead className="text-right text-xs">Size</TableHead>
+            <TableHead className="text-right text-xs w-8"></TableHead>
           </TableRow>
-        ))}
-      </TableBody>
-    </Table>
+        </TableHeader>
+        <TableBody>
+          {orders.map((order) => (
+            <TableRow key={order.order_id} className="text-xs">
+              <TableCell className="font-medium">{order.symbol}</TableCell>
+              <TableCell>
+                <Badge variant={order.side === "bid" ? "default" : "destructive"} className="text-[10px]">
+                  {order.side === "bid" ? "BUY" : "SELL"}
+                </Badge>
+              </TableCell>
+              <TableCell className="text-right font-mono">{formatNum(order.price)}</TableCell>
+              <TableCell className="text-right font-mono">{formatNum(order.initial_amount)}</TableCell>
+              <TableCell className="text-right">
+                <button
+                  className="text-[10px] text-muted-foreground underline underline-offset-2 hover:text-destructive transition-colors disabled:opacity-50"
+                  onClick={() => handleCancel(order.order_id, order.symbol)}
+                  disabled={cancelling !== null}
+                >
+                  {cancelling === order.order_id ? "..." : "✕"}
+                </button>
+              </TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+      {orders.length > 1 && (
+        <div className="px-3 py-2">
+          <button
+            className="text-[10px] text-muted-foreground underline underline-offset-2 hover:text-destructive transition-colors disabled:opacity-50"
+            onClick={handleCancelAll}
+            disabled={cancelling !== null}
+          >
+            {cancelling === "all" ? "Cancelling..." : "Cancel all"}
+          </button>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -155,16 +241,21 @@ export function TradingPanel({
         <Chart symbol={symbol} />
       </div>
 
-      {/* Bottom section: orderbook + positions */}
+      {/* Bottom section: orderbook + order form + positions */}
       <div className="flex flex-1 overflow-hidden">
         {/* Orderbook */}
-        <div className="w-1/2 overflow-auto border-r">
+        <div className="w-1/3 overflow-auto border-r">
           <div className="px-3 py-2 text-xs font-medium text-muted-foreground">Orderbook</div>
           <OrderbookView symbol={symbol} />
         </div>
 
+        {/* Order form */}
+        <div className="w-1/3 overflow-auto border-r">
+          <OrderForm symbol={symbol} />
+        </div>
+
         {/* Positions & Orders */}
-        <div className="w-1/2 overflow-auto">
+        <div className="w-1/3 overflow-auto">
           {authenticated && account ? (
             <>
               <div className="border-b">
