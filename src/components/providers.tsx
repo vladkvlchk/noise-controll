@@ -1,9 +1,12 @@
 "use client";
 
 import { PrivyProvider } from "@privy-io/react-auth";
+import { toSolanaWalletConnectors } from "@privy-io/react-auth/solana";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { WagmiProvider } from "wagmi";
 import { wagmiConfig } from "@/config/wagmi";
+
+const solanaConnectors = toSolanaWalletConnectors();
 
 const queryClient = new QueryClient();
 
@@ -24,11 +27,18 @@ export function Providers({ children }: { children: React.ReactNode }) {
     <PrivyProvider
       appId={privyAppId}
       config={{
+        loginMethods: ["wallet"],
         appearance: {
           theme: "dark",
+          walletChainType: "solana-only",
+        },
+        externalWallets: {
+          solana: {
+            connectors: solanaConnectors,
+          },
         },
         embeddedWallets: {
-          ethereum: {
+          solana: {
             createOnLogin: "users-without-wallets",
           },
         },
